@@ -74,10 +74,10 @@ import { importAnnotatedPgn } from '@/lib/chess/pgn';
 import { readShareHash, shareHash } from '@/lib/chess/share';
 import {
   appendMove,
-  buildStudyFromSan,
   createStudy,
   expandNode,
   legalMoves,
+  looksLikeFenInput,
   moveToUci,
   nodePath,
   parseUci,
@@ -86,23 +86,6 @@ import {
   START_FEN,
 } from '@/lib/chess/study';
 
-const SAMPLE_PHRASE = 'a map with no edge';
-const SAMPLE_MOVES = [
-  'e4',
-  'e5',
-  'Nf3',
-  'Nc6',
-  'Bb5',
-  'a6',
-  'Ba4',
-  'Nf6',
-  'O-O',
-  'Be7',
-  'Re1',
-  'b5',
-  'Bb3',
-  'd6',
-];
 const PermutationsGraph = lazy(() =>
   import('@/app/permutations-graph').then((module) => ({
     default: module.PermutationsGraph,
@@ -353,7 +336,7 @@ function AccessibleTree({
 export function ChessPermutations() {
   const [study, setStudy] = useState<StudyModel | null>(null);
   const studyRef = useRef<StudyModel | null>(null);
-  const [phrase, setPhrase] = useState(SAMPLE_PHRASE);
+  const [phrase, setPhrase] = useState('');
   const [orientation, setOrientation] = useState<Orientation>('white');
   const [engineLines, setEngineLines] = useState<AnalysisLine[]>([]);
   const [probabilities, setProbabilities] = useState<
@@ -591,15 +574,12 @@ export function ChessPermutations() {
               START_FEN,
               'Shared generated game',
             ));
-        else {
-          const address = await phraseAddress(SAMPLE_PHRASE);
-          initial = await buildStudyFromSan(
-            SAMPLE_MOVES,
-            { kind: 'seed', address },
-            SAMPLE_PHRASE,
+        else
+          initial = await createStudy(
+            { kind: 'fen', fen: START_FEN },
+            START_FEN,
+            'New game',
           );
-          initial = await expandNode(initial, initial.activeId);
-        }
         if (shared?.activePath.length)
           initial = await followSharedPath(initial, shared.activePath);
         initial = await expandNode(initial, initial.activeId);
@@ -615,14 +595,12 @@ export function ChessPermutations() {
             ? error.message
             : 'The shared study could not be opened.',
         );
-        const address = await phraseAddress(SAMPLE_PHRASE);
-        commitStudy(
-          await buildStudyFromSan(
-            SAMPLE_MOVES,
-            { kind: 'seed', address },
-            SAMPLE_PHRASE,
-          ),
+        const blank = await createStudy(
+          { kind: 'fen', fen: START_FEN },
+          START_FEN,
+          'New game',
         );
+        commitStudy(await expandNode(blank, blank.rootId));
       }
     })();
     return () => {
@@ -889,14 +867,6 @@ export function ChessPermutations() {
     [commitStudy, notify, startGeneration],
   );
 
-  const openPhrase = useCallback(
-    (event: { preventDefault(): void }) => {
-      event.preventDefault();
-      void openSeed(phrase).catch(() => undefined);
-    },
-    [openSeed, phrase],
-  );
-
   const startNewGame = useCallback(() => {
     void (async () => {
       try {
@@ -930,6 +900,57 @@ export function ChessPermutations() {
       }
     })();
   }, [commitStudy, notify]);
+
+  const openFenEntry = useCallback(
+    async (value: string) => {
+      try {
+        const canonical = new Chess(value.trim()).fen();
+        analysisAbort.current?.abort();
+        generationAbort.current?.abort();
+        backgroundAbort.current?.abort();
+        engine.current?.stop();
+        generationRun.current += 1;
+        generationActive.current = false;
+        shouldResume.current = false;
+        setPlaying(false);
+        setEngineLines([]);
+        const position = await createStudy(
+          { kind: 'fen', fen: canonical },
+          canonical,
+          'FEN position',
+        );
+        const expanded = await expandNode(position, position.rootId);
+        history.replaceState(null, '', location.pathname);
+        commitStudy(expanded);
+        setPhrase('');
+        setMobilePane('board');
+        notify('FEN position opened.', 'success');
+      } catch (error) {
+        notify(
+          error instanceof Error ? error.message : 'That FEN is not valid.',
+          'error',
+        );
+      }
+    },
+    [commitStudy, notify],
+  );
+
+  const openEntry = useCallback(
+    (event: { preventDefault(): void }) => {
+      event.preventDefault();
+      const value = phrase.trim();
+      if (!value) {
+        startNewGame();
+        return;
+      }
+      if (looksLikeFenInput(value)) {
+        void openFenEntry(value);
+        return;
+      }
+      void openSeed(value).catch(() => undefined);
+    },
+    [openFenEntry, openSeed, phrase, startNewGame],
+  );
 
   const openImport = useCallback(
     async (kind: 'fen' | 'pgn', value: string) => {
@@ -1290,7 +1311,7 @@ export function ChessPermutations() {
             className="wordmark"
             type="button"
             aria-label="chesspermutations home"
-            onClick={() => history.replaceState(null, '', location.pathname)}
+            onClick={startNewGame}
           >
             <Orbit aria-hidden="true" />
             <span>
@@ -1299,11 +1320,11 @@ export function ChessPermutations() {
               PERMUTATIONS
             </span>
           </button>
-          <form className="seed-form" onSubmit={openPhrase}>
+          <form className="seed-form" onSubmit={openEntry}>
             <Input
               id="seed-input"
-              aria-label="Permanent game phrase"
-              placeholder="Enter a phrase"
+              aria-label="Permanent game phrase or FEN position"
+              placeholder="Enter a phrase or paste FEN"
               value={phrase}
               onChange={(event) => setPhrase(event.target.value)}
               spellCheck={false}

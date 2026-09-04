@@ -10,6 +10,7 @@ import {
   buildStudyFromSan,
   createStudy,
   expandNode,
+  looksLikeFenInput,
   pgnForPath,
   START_FEN,
 } from '@/lib/chess/study';
@@ -48,6 +49,12 @@ describe('frozen chess-game:v1 identities', () => {
 });
 
 describe('rules, paths, and positions', () => {
+  it('recognizes fast FEN entry without mistaking normal phrases for positions', () => {
+    expect(looksLikeFenInput(START_FEN)).toBe(true);
+    expect(looksLikeFenInput('8/8/8/8/8/8/8/8 invalid')).toBe(true);
+    expect(looksLikeFenInput('a map with no edge')).toBe(false);
+  });
+
   it('opens a blank standard game with every legal first move', async () => {
     const blank = await createStudy(
       { kind: 'fen', fen: START_FEN },
