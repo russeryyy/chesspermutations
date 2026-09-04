@@ -165,6 +165,10 @@ textarea {
   color: var(--foreground);
   font-family: var(--font-geist-mono);
 }
+.new-game-button {
+  flex: none;
+  white-space: nowrap;
+}
 .header-actions {
   display: flex;
   align-items: center;
@@ -953,6 +957,9 @@ textarea {
   }
   .header-actions button:nth-of-type(1) svg {
     margin: 0;
+  }
+  .new-game-button span {
+    display: none;
   }
   .graph-toolbar h2 {
     display: none;

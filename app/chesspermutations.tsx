@@ -897,6 +897,40 @@ export function ChessPermutations() {
     [openSeed, phrase],
   );
 
+  const startNewGame = useCallback(() => {
+    void (async () => {
+      try {
+        analysisAbort.current?.abort();
+        generationAbort.current?.abort();
+        backgroundAbort.current?.abort();
+        engine.current?.stop();
+        generationRun.current += 1;
+        generationActive.current = false;
+        shouldResume.current = false;
+        setPlaying(false);
+        setEngineLines([]);
+        setPhrase('');
+        const blank = await createStudy(
+          { kind: 'fen', fen: START_FEN },
+          START_FEN,
+          'New game',
+        );
+        const expanded = await expandNode(blank, blank.rootId);
+        history.replaceState(null, '', location.pathname);
+        commitStudy(expanded);
+        setMobilePane('board');
+        notify('New game ready. Make any legal first move.', 'success');
+      } catch (error) {
+        notify(
+          error instanceof Error
+            ? error.message
+            : 'The new game could not be opened.',
+          'error',
+        );
+      }
+    })();
+  }, [commitStudy, notify]);
+
   const openImport = useCallback(
     async (kind: 'fen' | 'pgn', value: string) => {
       setImportError('');
@@ -1276,6 +1310,17 @@ export function ChessPermutations() {
               maxLength={512}
             />
             <Button type="submit">Open</Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="new-game-button"
+              aria-label="Start a new game from the standard position"
+              title="Start a new game from the standard position"
+              onClick={startNewGame}
+            >
+              <RotateCcw />
+              <span>New game</span>
+            </Button>
           </form>
           <div className="header-actions">
             <a
