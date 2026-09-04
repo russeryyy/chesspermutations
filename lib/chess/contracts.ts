@@ -1,4 +1,5 @@
 export const GAME_CONTRACT_VERSION = 'chess-game:v1' as const;
+export const GRAPH_ANALYSIS_VERSION = 'graph-analysis:v1' as const;
 export const SHARE_VERSION = 1 as const;
 export const GRAPH_NODE_LIMIT = 1_200;
 export const PGN_IMPORT_LIMIT = 1_000_000;
@@ -17,6 +18,17 @@ export interface Evaluation {
   depth: number;
   nodes: number;
   pv: string[];
+}
+
+/** Engine win/draw/loss values normalized to White's perspective. Values are per mille. */
+export interface WinProbability {
+  version: typeof GRAPH_ANALYSIS_VERSION;
+  white: number;
+  draw: number;
+  black: number;
+  depth: number;
+  nodes: number;
+  engine: EngineContract['build'];
 }
 
 export interface NodeAnnotations {

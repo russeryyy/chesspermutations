@@ -18,6 +18,8 @@ To reproduce the browser distribution, check out the `v18.0.8` tag of `nmrugg/st
 - License copy: `public/CHESSGROUND-LICENSE.txt`
 - Corresponding source: <https://github.com/lichess-org/chessground/tree/v10.1.1>
 
+`public/graph-piece-atlas.svg` is a silhouette atlas derived from Chessground's bundled Cburnett artwork and is distributed under the same GPL-3.0-or-later terms.
+
 ## Other runtime dependencies
 
 The application also uses chess.js, @echecs/pgn, Three.js, fflate, React, and the dependency set recorded in `package-lock.json`. Their package metadata and license texts are available from the npm packages pinned by that lockfile.
