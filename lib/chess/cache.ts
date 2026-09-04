@@ -1,6 +1,6 @@
 import type { StudyModel } from './contracts';
 
-const DATABASE = 'chess-universe-v1';
+const DATABASE = 'chesspermutations-v1';
 const STORE = 'generated-studies';
 
 function database(): Promise<IDBDatabase> {

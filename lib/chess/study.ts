@@ -130,8 +130,8 @@ export function pgnForPath(study: StudyModel, nodeId = study.activeId): string {
   if (study.source.kind === 'pgn') return study.source.pgn;
   const node = study.nodes[nodeId];
   const chess = replayPath(study.rootFen, node?.path ?? []);
-  chess.setHeader('Event', study.localTitle || study.importedHeaders?.Event || 'Chess Universe study');
-  chess.setHeader('Site', 'Chess Universe');
+  chess.setHeader('Event', study.localTitle || study.importedHeaders?.Event || 'chesspermutations study');
+  chess.setHeader('Site', 'chesspermutations');
   chess.setHeader('Result', study.result || '*');
   if (study.rootFen !== START_FEN) {
     chess.setHeader('SetUp', '1');

@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { GameNode } from '@/lib/chess/contracts';
 import { layoutGameTree, visibleGameTree } from '@/lib/chess/layout';
 
-interface UniverseGraphProps {
+interface PermutationsGraphProps {
   nodes: GameNode[];
   activeId: string;
   onSelect: (id: string) => void;
@@ -23,7 +23,7 @@ function nodeColor(node: GameNode, active: boolean): THREE.Color {
   return new THREE.Color('#78ddd0');
 }
 
-export function UniverseGraph({ nodes, activeId, onSelect }: UniverseGraphProps) {
+export function PermutationsGraph({ nodes, activeId, onSelect }: PermutationsGraphProps) {
   const mount = useRef<HTMLDivElement>(null);
   const latest = useRef({ nodes, activeId, onSelect });
   const rebuild = useRef<(() => void) | null>(null);
@@ -194,5 +194,5 @@ export function UniverseGraph({ nodes, activeId, onSelect }: UniverseGraphProps)
     };
   }, []);
 
-  return <div ref={mount} className="universe-canvas">{error && <p className="canvas-error" role="alert">{error}</p>}</div>;
+  return <div ref={mount} className="permutations-canvas">{error && <p className="canvas-error" role="alert">{error}</p>}</div>;
 }

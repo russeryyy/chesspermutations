@@ -1,16 +1,16 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ChessUniverse } from './chess-universe';
+import { ChessPermutations } from './chesspermutations';
 import './globals.css';
 
 const root = document.getElementById('root');
 
 if (!root) {
-  throw new Error('Chess Universe could not find its application root.');
+  throw new Error('chesspermutations could not find its application root.');
 }
 
 createRoot(root).render(
   <StrictMode>
-    <ChessUniverse />
+    <ChessPermutations />
   </StrictMode>,
 );

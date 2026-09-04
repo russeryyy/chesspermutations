@@ -1,9 +1,9 @@
-Chess Universe source code
-==========================
+chesspermutations source code
+=============================
 
-Chess Universe is GPLv3 software. Download the exact corresponding source snapshot for this build at:
+chesspermutations is GPLv3 software. Download the exact corresponding source snapshot for this build at:
 
-  /chess-universe-source-v1.zip
+  /chesspermutations-source-v1.zip
 
 Engine sources and build instructions:
 

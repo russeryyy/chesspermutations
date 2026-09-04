@@ -1,6 +1,6 @@
-# Chess Universe
+# chesspermutations
 
-Chess Universe is a deterministic, local-first chess game-tree explorer. A phrase becomes a permanent generated game address, legal branches expand on demand, and a WebGL universe makes branch geometry and time navigable.
+chesspermutations is a deterministic, local-first chess game-tree explorer. A phrase becomes a permanent generated game address, legal branches expand on demand, and a WebGL tree makes branch geometry and time navigable.
 
 ## Development
 
@@ -25,4 +25,4 @@ Seed phrases are normalized and SHA-256 hashed in the browser with a `chess-game
 
 ## Licensing
 
-Chess Universe is released under GPLv3. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). A corresponding source snapshot is included in production builds.
+chesspermutations is released under GPLv3. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). A corresponding source snapshot is included in production builds.

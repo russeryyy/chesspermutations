@@ -25,7 +25,7 @@ import { appendMove, buildStudyFromSan, createStudy, expandNode, legalMoves, mov
 
 const SAMPLE_PHRASE = 'a map with no edge';
 const SAMPLE_MOVES = ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O', 'Be7', 'Re1', 'b5', 'Bb3', 'd6'];
-const UniverseGraph = lazy(() => import('@/app/universe-graph').then((module) => ({ default: module.UniverseGraph })));
+const PermutationsGraph = lazy(() => import('@/app/permutations-graph').then((module) => ({ default: module.PermutationsGraph })));
 
 interface WebMcpContext {
   registerTool(tool: {
@@ -144,14 +144,14 @@ function AccessibleTree({ study, onSelect }: { study: StudyModel; onSelect: (id:
   );
 }
 
-export function ChessUniverse() {
+export function ChessPermutations() {
   const [study, setStudy] = useState<StudyModel | null>(null);
   const studyRef = useRef<StudyModel | null>(null);
   const [phrase, setPhrase] = useState(SAMPLE_PHRASE);
   const [orientation, setOrientation] = useState<Orientation>('white');
   const [engineLines, setEngineLines] = useState<AnalysisLine[]>([]);
   const [engineStatus, setEngineStatus] = useState('SHELL READY');
-  const [notice, setNotice] = useState('Loading local universe…');
+  const [notice, setNotice] = useState('Loading local permutations…');
   const [importOpen, setImportOpen] = useState(false);
   const [importKind, setImportKind] = useState<'fen' | 'pgn'>('fen');
   const [importText, setImportText] = useState('');
@@ -403,7 +403,7 @@ export function ChessUniverse() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'chess-universe-study.pgn';
+    link.download = 'chesspermutations-study.pgn';
     link.click();
     URL.revokeObjectURL(url);
     setNotice('PGN downloaded.');
@@ -445,7 +445,7 @@ export function ChessUniverse() {
     register({
       name: 'select_chess_path',
       title: 'Select chess path',
-      description: 'Navigate the current study to a complete legal path of UCI moves and update the board, notation, and universe together.',
+      description: 'Navigate the current study to a complete legal path of UCI moves and update the board, notation, and permutation tree together.',
       inputSchema: { type: 'object', properties: { moves: { type: 'array', maxItems: 320, items: { type: 'string', pattern: '^[a-h][1-8][a-h][1-8][qrbn]?$' } } }, required: ['moves'], additionalProperties: false },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: async (input) => {
@@ -537,14 +537,14 @@ export function ChessUniverse() {
   const sourceLabel = study.source.kind === 'seed' ? 'GENERATED SEED' : study.source.kind === 'fen' ? 'FEN STUDY' : 'ANNOTATED PGN';
 
   return (
-    <main className="chess-app">
+    <main className="chesspermutations-app">
       <header className="app-header">
-        <button className="wordmark" type="button" aria-label="Chess Universe home" onClick={() => history.replaceState(null, '', location.pathname)}><Orbit aria-hidden="true" /><span>CHESS<br />UNIVERSE</span></button>
+        <button className="wordmark" type="button" aria-label="chesspermutations home" onClick={() => history.replaceState(null, '', location.pathname)}><Orbit aria-hidden="true" /><span>CHESS<br />PERMUTATIONS</span></button>
         <form className="seed-form" onSubmit={openPhrase}><label htmlFor="seed-input">OPEN A PERMANENT GAME</label><div><Input id="seed-input" value={phrase} onChange={(event) => setPhrase(event.target.value)} spellCheck={false} maxLength={512} /><Button type="submit">Open seed</Button></div></form>
         <div className="header-actions"><Button variant="outline" onClick={() => setImportOpen(true)}><FileInput /> Import</Button><Button variant="ghost" size="icon" aria-label="Copy share link" onClick={copyShareLink}><Share2 /></Button></div>
       </header>
 
-      <Tabs value={mobilePane} onValueChange={setMobilePane} className="mobile-pane-tabs"><TabsList><TabsTrigger value="board">Board</TabsTrigger><TabsTrigger value="analysis">Moves</TabsTrigger><TabsTrigger value="universe">Universe</TabsTrigger></TabsList></Tabs>
+      <Tabs value={mobilePane} onValueChange={setMobilePane} className="mobile-pane-tabs"><TabsList><TabsTrigger value="board">Board</TabsTrigger><TabsTrigger value="analysis">Moves</TabsTrigger><TabsTrigger value="permutations">Tree</TabsTrigger></TabsList></Tabs>
 
       <section className="workspace" data-mobile-pane={mobilePane}>
         <section className="board-panel" aria-labelledby="board-title">
@@ -563,17 +563,17 @@ export function ChessUniverse() {
           <div className="analysis-actions"><Button variant="outline" onClick={exportPgn}><Download /> Export PGN</Button>{study.source.kind === 'seed' && <Button variant="ghost" onClick={() => startGeneration(studyRef.current!, false)}><RotateCcw /> Continue generation</Button>}</div>
         </aside>
 
-        <section ref={graphPanel} className="universe-panel" aria-labelledby="universe-title">
-          <div className="panel-heading"><div><span>3D GAME TREE / TIME AS DEPTH</span><h2 id="universe-title">Local universe</h2></div><div className="graph-actions"><Button variant="ghost" size="sm" onClick={() => setGraphMode((value) => value === '3d' ? 'list' : '3d')}><ListTree /> {graphMode === '3d' ? '2D tree' : '3D view'}</Button><Button variant="ghost" size="icon-sm" aria-label="Fullscreen graph" onClick={() => void graphPanel.current?.requestFullscreen()}><Maximize2 /></Button></div></div>
-          <div className="universe-view">{graphMode === '3d' ? <Suspense fallback={<div className="graph-loading">Mapping local branches…</div>}><UniverseGraph nodes={treeNodes} activeId={activeNode.id} onSelect={(id) => void selectNode(id)} /></Suspense> : <AccessibleTree study={study} onSelect={(id) => void selectNode(id)} />}</div>
-          <div className="universe-legend"><span><i className="white-edge" />White edge</span><span><i className="equal" />Balanced</span><span><i className="black-edge" />Black edge</span><strong>{Math.min(treeNodes.length, GRAPH_NODE_LIMIT).toLocaleString()} / {GRAPH_NODE_LIMIT.toLocaleString()} nodes</strong></div>
+        <section ref={graphPanel} className="permutations-panel" aria-labelledby="permutations-title">
+          <div className="panel-heading"><div><span>3D GAME TREE / TIME AS DEPTH</span><h2 id="permutations-title">Move permutations</h2></div><div className="graph-actions"><Button variant="ghost" size="sm" onClick={() => setGraphMode((value) => value === '3d' ? 'list' : '3d')}><ListTree /> {graphMode === '3d' ? '2D tree' : '3D view'}</Button><Button variant="ghost" size="icon-sm" aria-label="Fullscreen graph" onClick={() => void graphPanel.current?.requestFullscreen()}><Maximize2 /></Button></div></div>
+          <div className="permutations-view">{graphMode === '3d' ? <Suspense fallback={<div className="graph-loading">Mapping local branches…</div>}><PermutationsGraph nodes={treeNodes} activeId={activeNode.id} onSelect={(id) => void selectNode(id)} /></Suspense> : <AccessibleTree study={study} onSelect={(id) => void selectNode(id)} />}</div>
+          <div className="permutations-legend"><span><i className="white-edge" />White edge</span><span><i className="equal" />Balanced</span><span><i className="black-edge" />Black edge</span><strong>{Math.min(treeNodes.length, GRAPH_NODE_LIMIT).toLocaleString()} / {GRAPH_NODE_LIMIT.toLocaleString()} nodes</strong></div>
         </section>
       </section>
       <footer className="status-bar"><button onClick={() => setLicensesOpen(true)}><i /> Browser local · GPLv3</button><span title={address}>GAME ADDRESS · @{address.slice(0, 8)}…{address.slice(-4)}</span><span>{notice}</span><span>4D · XY BRANCH · Z PLY · T PLAYBACK</span></footer>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="import-dialog"><DialogHeader><DialogTitle>Import a local study</DialogTitle><DialogDescription>FEN and one annotated PGN are validated entirely in this browser. Nothing is uploaded.</DialogDescription></DialogHeader><Tabs value={importKind} onValueChange={(value) => { setImportKind(value as 'fen' | 'pgn'); setImportError(''); }}><TabsList><TabsTrigger value="fen">FEN</TabsTrigger><TabsTrigger value="pgn">Annotated PGN</TabsTrigger></TabsList><TabsContent value="fen"><Textarea rows={5} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={START_FEN} aria-label="FEN position" /></TabsContent><TabsContent value="pgn"><Textarea rows={12} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={'[Event "Study"]\n\n1. e4 e5 2. Nf3 (2. Bc4) Nc6 *'} aria-label="Annotated PGN" /></TabsContent></Tabs>{importError && <p className="form-error" role="alert">{importError}</p>}<DialogFooter><Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button><Button onClick={submitImport} disabled={!importText.trim()}>Validate and open</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={licensesOpen} onOpenChange={setLicensesOpen}><DialogContent className="license-dialog"><DialogHeader><DialogTitle>Open-source notices</DialogTitle><DialogDescription>Chess Universe is GPLv3 software. Analysis runs locally with the exact vendored builds below.</DialogDescription></DialogHeader><div className="license-list"><p><strong>Chess Universe</strong><br />GPLv3 · <a href="/chess-universe-source-v1.zip" download>download this build’s source</a> · <a href="/SOURCE.txt" target="_blank">source notice</a></p><p><strong>Stockfish.js 18.0.8 lite single-thread</strong><br />GPLv3 · <a href="https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918" target="_blank" rel="noreferrer">exact corresponding source and build instructions</a> · <a href="/stockfish/COPYING.txt" target="_blank">license</a></p><p><strong>Chessground 10.1.1</strong><br />GPL-3.0-or-later · <a href="https://github.com/lichess-org/chessground/tree/v10.1.1" target="_blank" rel="noreferrer">source</a> · <a href="/CHESSGROUND-LICENSE.txt" target="_blank">license</a></p></div><DialogFooter showCloseButton /></DialogContent></Dialog>
+      <Dialog open={licensesOpen} onOpenChange={setLicensesOpen}><DialogContent className="license-dialog"><DialogHeader><DialogTitle>Open-source notices</DialogTitle><DialogDescription>chesspermutations is GPLv3 software. Analysis runs locally with the exact vendored builds below.</DialogDescription></DialogHeader><div className="license-list"><p><strong>chesspermutations</strong><br />GPLv3 · <a href="/chesspermutations-source-v1.zip" download>download this build’s source</a> · <a href="/SOURCE.txt" target="_blank">source notice</a></p><p><strong>Stockfish.js 18.0.8 lite single-thread</strong><br />GPLv3 · <a href="https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918" target="_blank" rel="noreferrer">exact corresponding source and build instructions</a> · <a href="/stockfish/COPYING.txt" target="_blank">license</a></p><p><strong>Chessground 10.1.1</strong><br />GPL-3.0-or-later · <a href="https://github.com/lichess-org/chessground/tree/v10.1.1" target="_blank" rel="noreferrer">source</a> · <a href="/CHESSGROUND-LICENSE.txt" target="_blank">license</a></p></div><DialogFooter showCloseButton /></DialogContent></Dialog>
     </main>
   );
 }
