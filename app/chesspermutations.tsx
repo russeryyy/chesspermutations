@@ -5,8 +5,8 @@ import { Chess, type Move, type Square } from 'chess.js';
 import { Chessground } from '@lichess-org/chessground';
 import type { Key } from '@lichess-org/chessground/types';
 import {
-  ChevronLeft, ChevronRight, Download, FileInput, FlipHorizontal2, ListTree,
-  Maximize2, Orbit, Pause, Play, RotateCcw, Share2,
+  ChevronLeft, ChevronRight, Download, FileInput, FlipHorizontal2, Info,
+  ListTree, Maximize2, Orbit, Pause, Play, RotateCcw, Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Toaster, toast } from '@/components/ui/toast';
 import { adjudicate } from '@/lib/chess/adjudication';
 import { readCachedStudy, writeCachedStudy } from '@/lib/chess/cache';
 import { ENGINE_CONTRACT, GRAPH_NODE_LIMIT, type Evaluation, type GameNode, type Orientation, type StudyModel } from '@/lib/chess/contracts';
@@ -50,6 +51,14 @@ function scoreLabel(evaluation?: Pick<Evaluation, 'type' | 'value'>): string {
   if (evaluation.type === 'mate') return evaluation.value > 0 ? `M${evaluation.value}` : `−M${Math.abs(evaluation.value)}`;
   const value = evaluation.value / 100;
   return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}`;
+}
+
+function engineStatusLabel(status: string): string {
+  if (status.startsWith('GENERATING')) return status.replace('GENERATING · ', 'Generating · ').replace('PLY ', 'ply ');
+  if (status.startsWith('ANALYZING')) return 'Analyzing';
+  if (status.startsWith('ENGINE UNAVAILABLE')) return 'Engine unavailable';
+  if (status === 'SHELL READY') return 'Starting engine';
+  return 'Ready';
 }
 
 function lineSan(fen: string, uci: string): string {
@@ -162,7 +171,7 @@ export function ChessPermutations() {
   const [playing, setPlaying] = useState(false);
   const engineStatusRef = useRef(engineStatus);
   const orientationRef = useRef(orientation);
-  const graphPanel = useRef<HTMLElement>(null);
+  const workspace = useRef<HTMLElement>(null);
   const engine = useRef<StockfishClient | null>(null);
   const analysisAbort = useRef<AbortController | null>(null);
   const generationAbort = useRef<AbortController | null>(null);
@@ -176,6 +185,10 @@ export function ChessPermutations() {
 
   const commitStudy = useCallback((next: StudyModel) => { studyRef.current = next; setStudy(next); }, []);
   const getEngine = useCallback(() => { if (!engine.current) engine.current = new StockfishClient(); return engine.current; }, []);
+  const notify = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    setNotice(message);
+    if (studyRef.current) toast.add({ title: message, type, timeout: type === 'error' ? 6_000 : 3_000, priority: type === 'error' ? 'high' : 'low' });
+  }, []);
 
   const startGeneration = useCallback((base: StudyModel, follow: boolean) => {
     if (base.source.kind !== 'seed' || base.result) return;
@@ -216,11 +229,11 @@ export function ChessPermutations() {
         }
         if (!controller.signal.aborted) {
           await writeCachedStudy(address, generated);
-          setNotice(generated.termination ? `Generated line complete · ${generated.termination}` : 'Generated line cached locally.');
+          notify(generated.termination ? `Generated line complete · ${generated.termination}` : 'Generated line cached locally.', 'success');
         }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setNotice(error instanceof Error ? error.message : 'Local generation stopped unexpectedly.');
+          notify(error instanceof Error ? error.message : 'Local generation stopped unexpectedly.', 'error');
           setEngineStatus('ENGINE UNAVAILABLE · RULES READY');
         }
       } finally {
@@ -230,7 +243,7 @@ export function ChessPermutations() {
         }
       }
     })();
-  }, [commitStudy, getEngine]);
+  }, [commitStudy, getEngine, notify]);
   useEffect(() => { startGenerationRef.current = startGeneration; }, [startGeneration]);
 
   useEffect(() => {
@@ -252,7 +265,6 @@ export function ChessPermutations() {
         if (!alive) return;
         if (shared) setOrientation(shared.orientation);
         commitStudy(initial);
-        setNotice('Local-first · nothing uploaded.');
         if (shared?.source.kind === 'seed' && initial.mainline.length === 1) startGenerationRef.current(initial, true);
       } catch (error) {
         if (!alive) return;
@@ -291,7 +303,7 @@ export function ChessPermutations() {
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
           setEngineStatus('ENGINE UNAVAILABLE · RULES READY');
-          setNotice(error instanceof Error ? error.message : 'Local analysis failed.');
+          notify(error instanceof Error ? error.message : 'Local analysis failed.', 'error');
         }
       } finally {
         if (!controller.signal.aborted && studyRef.current?.activeId === selectedId && shouldResume.current && studyRef.current.source.kind === 'seed') {
@@ -301,7 +313,7 @@ export function ChessPermutations() {
       }
     })();
     return () => controller.abort();
-  }, [activeId, commitStudy, getEngine]);
+  }, [activeId, commitStudy, getEngine, notify]);
 
   useEffect(() => () => { analysisAbort.current?.abort(); generationAbort.current?.abort(); engine.current?.destroy(); }, []);
 
@@ -329,28 +341,28 @@ export function ChessPermutations() {
       const appended = await appendMove(current, current.activeId, uci, false);
       const expanded = await expandNode(appended.study, appended.node.id);
       commitStudy({ ...expanded, activeId: appended.node.id });
-      setNotice(`Created branch ${appended.node.san}.`);
-    } catch (error) { setNotice(error instanceof Error ? error.message : 'That move is not legal.'); }
-  }, [commitStudy, pauseGenerationForSelection]);
+      notify(`Created branch ${appended.node.san}.`, 'success');
+    } catch (error) { notify(error instanceof Error ? error.message : 'That move is not legal.', 'error'); }
+  }, [commitStudy, notify, pauseGenerationForSelection]);
 
   const openSeed = useCallback(async (value: string) => {
     try {
       setEngineLines([]);
-      setNotice('Hashing phrase locally…');
+      notify('Hashing phrase locally…');
       analysisAbort.current?.abort();
       generationAbort.current?.abort();
       const address = await phraseAddress(value);
       const cached = await readCachedStudy(address);
       const next = cached ?? await createStudy({ kind: 'seed', address }, START_FEN, value.trim());
       commitStudy(next);
-      setNotice(cached ? 'Opened cached permanent game.' : 'Seed created. Streaming deterministic moves…');
+      notify(cached ? 'Opened cached permanent game.' : 'Seed created. Streaming deterministic moves…', 'success');
       if (!cached?.result) startGeneration(next, true);
       return { address, cached: Boolean(cached), activePly: next.nodes[next.activeId].ply };
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'The phrase could not be opened.');
+      notify(error instanceof Error ? error.message : 'The phrase could not be opened.', 'error');
       throw error;
     }
-  }, [commitStudy, startGeneration]);
+  }, [commitStudy, notify, startGeneration]);
 
   const openPhrase = useCallback((event: { preventDefault(): void }) => {
     event.preventDefault();
@@ -374,13 +386,13 @@ export function ChessPermutations() {
       commitStudy(next);
       setImportOpen(false);
       setImportText('');
-      setNotice(kind === 'fen' ? 'FEN validated and opened.' : 'Annotated PGN validated and imported.');
+      notify(kind === 'fen' ? 'FEN validated and opened.' : 'Annotated PGN validated and imported.', 'success');
       return { kind, title: next.localTitle ?? null, nodes: Object.keys(next.nodes).length, activePly: next.nodes[next.activeId].ply };
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'Import failed.');
       throw error;
     }
-  }, [commitStudy]);
+  }, [commitStudy, notify]);
 
   const submitImport = useCallback(() => { void openImport(importKind, importText).catch(() => undefined); }, [importKind, importText, openImport]);
 
@@ -392,9 +404,9 @@ export function ChessPermutations() {
       const url = `${location.origin}${location.pathname}${hash}`;
       history.replaceState(null, '', hash);
       await navigator.clipboard.writeText(url);
-      setNotice('Versioned link copied. The original phrase is not in it.');
-    } catch (error) { setNotice(error instanceof Error ? error.message : 'The link could not be copied.'); }
-  }, [orientation]);
+      notify('Versioned link copied. The original phrase is not in it.', 'success');
+    } catch (error) { notify(error instanceof Error ? error.message : 'The link could not be copied.', 'error'); }
+  }, [notify, orientation]);
 
   const exportPgn = useCallback(() => {
     const current = studyRef.current;
@@ -406,8 +418,8 @@ export function ChessPermutations() {
     link.download = 'chesspermutations-study.pgn';
     link.click();
     URL.revokeObjectURL(url);
-    setNotice('PGN downloaded.');
-  }, []);
+    notify('PGN downloaded.', 'success');
+  }, [notify]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: WebMcpContext }).modelContext;
@@ -491,8 +503,14 @@ export function ChessPermutations() {
   }, [commitStudy, openImport, openSeed, pauseGenerationForSelection]);
 
   const lineNodes = useMemo(() => study ? nodePath(study, study.activeId) : [], [study]);
-  const activeMainlineIndex = study ? Math.max(0, study.mainline.indexOf(study.activeId)) : 0;
-  const mainlineMax = Math.max(0, (study?.mainline.length ?? 1) - 1);
+  const timelineNodes = useMemo(() => {
+    if (!study) return [];
+    return study.mainline.includes(study.activeId)
+      ? study.mainline.map((id) => study.nodes[id]).filter(Boolean)
+      : lineNodes;
+  }, [lineNodes, study]);
+  const activeTimelineIndex = Math.max(0, timelineNodes.findIndex((node) => node.id === study?.activeId));
+  const timelineMax = Math.max(0, timelineNodes.length - 1);
   const candidates: Move[] = study && activeNode ? legalMoves(study, activeNode.id) : [];
   const treeNodes = study ? Object.values(study.nodes) : [];
   const currentEvaluation = activeNode?.evaluation ?? activeNode?.annotations?.importedEvaluation;
@@ -533,47 +551,46 @@ export function ChessPermutations() {
   }, [stepMainline]);
 
   if (!study || !activeNode) return <main className="loading-shell"><Orbit /><p>{notice}</p></main>;
-  const address = study.source.kind === 'seed' ? study.source.address : study.rootId;
-  const sourceLabel = study.source.kind === 'seed' ? 'GENERATED SEED' : study.source.kind === 'fen' ? 'FEN STUDY' : 'ANNOTATED PGN';
 
   return (
-    <main className="chesspermutations-app">
-      <header className="app-header">
-        <button className="wordmark" type="button" aria-label="chesspermutations home" onClick={() => history.replaceState(null, '', location.pathname)}><Orbit aria-hidden="true" /><span>CHESS<br />PERMUTATIONS</span></button>
-        <form className="seed-form" onSubmit={openPhrase}><label htmlFor="seed-input">OPEN A PERMANENT GAME</label><div><Input id="seed-input" value={phrase} onChange={(event) => setPhrase(event.target.value)} spellCheck={false} maxLength={512} /><Button type="submit">Open seed</Button></div></form>
-        <div className="header-actions"><Button variant="outline" onClick={() => setImportOpen(true)}><FileInput /> Import</Button><Button variant="ghost" size="icon" aria-label="Copy share link" onClick={copyShareLink}><Share2 /></Button></div>
-      </header>
+    <>
+      <main className="chesspermutations-app">
+        <header className="app-header">
+          <button className="wordmark" type="button" aria-label="chesspermutations home" onClick={() => history.replaceState(null, '', location.pathname)}><Orbit aria-hidden="true" /><span>CHESS<br />PERMUTATIONS</span></button>
+          <form className="seed-form" onSubmit={openPhrase}><Input id="seed-input" aria-label="Permanent game phrase" placeholder="Enter a phrase" value={phrase} onChange={(event) => setPhrase(event.target.value)} spellCheck={false} maxLength={512} /><Button type="submit">Open</Button></form>
+          <div className="header-actions"><a className="github-link" href="https://github.com/russeryyy/chesspermutations" target="_blank" rel="noreferrer">Github</a><Button variant="outline" title="Import study" onClick={() => setImportOpen(true)}><FileInput /> Import</Button><Button variant="ghost" size="icon" aria-label="Copy share link" title="Copy share link" onClick={copyShareLink}><Share2 /></Button><Button variant="ghost" size="icon" aria-label="About and licenses" title="About and licenses" onClick={() => setLicensesOpen(true)}><Info /></Button></div>
+        </header>
 
-      <Tabs value={mobilePane} onValueChange={setMobilePane} className="mobile-pane-tabs"><TabsList><TabsTrigger value="board">Board</TabsTrigger><TabsTrigger value="analysis">Moves</TabsTrigger><TabsTrigger value="permutations">Tree</TabsTrigger></TabsList></Tabs>
+        <Tabs value={mobilePane} onValueChange={setMobilePane} className="mobile-pane-tabs"><TabsList><TabsTrigger value="board">Board</TabsTrigger><TabsTrigger value="analysis">Moves</TabsTrigger><TabsTrigger value="permutations">Tree</TabsTrigger></TabsList></Tabs>
 
-      <section className="workspace" data-mobile-pane={mobilePane}>
-        <section className="board-panel" aria-labelledby="board-title">
-          <div className="panel-heading"><div><span>{sourceLabel} / PLY {String(activeNode.ply).padStart(3, '0')}</span><h1 id="board-title">{study.localTitle || 'Local analysis tree'}</h1></div><strong>{scoreLabel(currentEvaluation)}</strong></div>
-          <div className="board-stage"><div className="eval-track" aria-label={`Evaluation ${scoreLabel(currentEvaluation)}`}><span style={{ height: `${evalPercent}%` }} /></div><AnalysisBoard node={activeNode} orientation={orientation} onMove={makeMove} /></div>
-          <div className="transport"><Button variant="outline" size="icon" aria-label="Previous move" onClick={() => stepMainline(-1)}><ChevronLeft /></Button><Button variant="outline" size="icon" aria-label={playing ? 'Pause line' : 'Play line'} onClick={() => setPlaying((value) => !value)}>{playing ? <Pause /> : <Play />}</Button><Slider aria-label="Move timeline" min={0} max={Math.max(1, mainlineMax)} value={Math.min(activeMainlineIndex, Math.max(1, mainlineMax))} onValueChange={(value) => { const index = typeof value === 'number' ? value : value[0]; const target = study.mainline[index]; if (target) void selectNode(target); }} /><Button variant="outline" size="icon" aria-label="Next move" onClick={() => stepMainline(1)}><ChevronRight /></Button><span>{String(activeNode.ply).padStart(2, '0')} / {String(mainlineMax).padStart(2, '0')}</span></div>
-          <div className="board-utilities"><Button variant="ghost" size="sm" onClick={() => setOrientation((value) => value === 'white' ? 'black' : 'white')}><FlipHorizontal2 /> Flip</Button>{activeNode.terminal && <strong>{activeNode.terminal}</strong>}</div>
+        <section ref={workspace} className="workspace" data-mobile-pane={mobilePane}>
+          <section className="board-panel" aria-label="Chess board and timeline">
+            <div className="board-stage"><div className="eval-track" aria-label={`Evaluation ${scoreLabel(currentEvaluation)}`}><span style={{ height: `${evalPercent}%` }} /></div><AnalysisBoard node={activeNode} orientation={orientation} onMove={makeMove} /></div>
+            <div className="transport"><Button variant="outline" size="icon" aria-label="Previous move" onClick={() => stepMainline(-1)}><ChevronLeft /></Button><Button variant="outline" size="icon" aria-label={playing ? 'Pause line' : 'Play line'} onClick={() => setPlaying((value) => !value)}>{playing ? <Pause /> : <Play />}</Button><Slider aria-label="Move timeline" min={0} max={Math.max(1, timelineMax)} value={Math.min(activeTimelineIndex, Math.max(1, timelineMax))} onValueChange={(value) => { const index = typeof value === 'number' ? value : value[0]; const target = timelineNodes[index]; if (target) void selectNode(target.id); }} /><Button variant="outline" size="icon" aria-label="Next move" onClick={() => stepMainline(1)}><ChevronRight /></Button><span>{String(activeTimelineIndex).padStart(2, '0')} / {String(timelineMax).padStart(2, '0')}</span></div>
+            <div className="board-utilities"><Button variant="ghost" size="sm" onClick={() => setOrientation((value) => value === 'white' ? 'black' : 'white')}><FlipHorizontal2 /> Flip</Button><div className="board-meta"><strong aria-label={`Evaluation ${scoreLabel(currentEvaluation)}`}>{scoreLabel(currentEvaluation)}</strong>{activeNode.terminal && <span>{activeNode.terminal}</span>}</div></div>
+          </section>
+
+          <aside className="analysis-panel" aria-label="Move analysis">
+            <div className="analysis-head"><strong className={engineStatus.startsWith('ENGINE UNAVAILABLE') ? 'engine-state engine-error' : 'engine-state'}><i />{engineStatusLabel(engineStatus)}</strong></div>
+            <section className="move-path"><header><span>Line</span><small>{activeNode.ply} ply</small></header><div className="move-list" aria-label="Selected move path">{lineNodes.slice(1).reduce<Array<{ number: number; white?: GameNode; black?: GameNode }>>((rows, node) => { const index = Math.floor((node.ply - 1) / 2); rows[index] ??= { number: index + 1 }; if (node.ply % 2) rows[index].white = node; else rows[index].black = node; return rows; }, []).map((row) => <div key={row.number} className={row.white?.id === activeNode.id || row.black?.id === activeNode.id ? 'current-move' : ''}><span>{String(row.number).padStart(2, '0')}</span>{row.white ? <button onClick={() => void selectNode(row.white!.id)}>{row.white.san}</button> : <i />}{row.black ? <button onClick={() => void selectNode(row.black!.id)}>{row.black.san}</button> : <i />}</div>)}</div></section>
+            {activeNode.annotations?.comment && <p className="node-comment">{activeNode.annotations.comment}</p>}
+            <section className="engine-lines"><header><span>Lines</span><small>{engineLines.length} PV</small></header><div className="analysis-scroll">{engineLines.slice(0, 6).map((line) => <button key={`${line.multipv}-${line.move}`} onClick={() => void makeMove(line.move)}><strong>{lineSan(activeNode.fen, line.move)}</strong><span>{scoreLabel(line)}</span><small>{line.pv.slice(1, 5).join(' ')}</small></button>)}</div></section>
+            <section className="continuations"><header><span>Legal moves</span><small>{candidates.length}</small></header><div className="analysis-scroll">{candidates.map((move, index) => { const uci = moveToUci(move); const analyzed = engineLines.find((line) => line.move === uci); return <button key={uci} onClick={() => void makeMove(uci)}><strong>{move.san}</strong><span>{analyzed ? scoreLabel(analyzed) : 'branch'}</span><i style={{ width: `${Math.max(8, 42 - index * 3)}%` }} /></button>; })}</div></section>
+            <div className="analysis-actions"><Button variant="outline" onClick={exportPgn}><Download /> Export PGN</Button>{study.source.kind === 'seed' && <Button variant="ghost" onClick={() => startGeneration(studyRef.current!, false)}><RotateCcw /> Continue</Button>}</div>
+          </aside>
+
+          <section className="permutations-panel" aria-labelledby="permutations-title">
+            <div className="graph-toolbar"><h2 id="permutations-title">Move permutations</h2><div className="graph-actions"><Button variant="ghost" size="sm" onClick={() => setGraphMode((value) => value === '3d' ? 'list' : '3d')}><ListTree /> {graphMode === '3d' ? '2D tree' : '3D view'}</Button><Button variant="ghost" size="icon-sm" aria-label="Fullscreen workspace" title="Fullscreen workspace" onClick={() => void workspace.current?.requestFullscreen()}><Maximize2 /></Button></div></div>
+            <div className="permutations-view">{graphMode === '3d' ? <Suspense fallback={<div className="graph-loading">Mapping local branches…</div>}><PermutationsGraph nodes={treeNodes} activeId={activeNode.id} orientation={orientation} onSelect={selectNode} /></Suspense> : <AccessibleTree study={study} onSelect={(id) => void selectNode(id)} />}</div>
+            <div className="graph-legend permutations-legend"><span><i className="white-edge" />White edge</span><span><i className="equal" />Balanced</span><span><i className="black-edge" />Black edge</span><strong>{Math.min(treeNodes.length, GRAPH_NODE_LIMIT).toLocaleString()} / {GRAPH_NODE_LIMIT.toLocaleString()}</strong></div>
+          </section>
         </section>
-
-        <aside className="analysis-panel" aria-label="Move analysis">
-          <div className="analysis-head"><div><span>ENGINE</span><strong>{engineStatus}</strong></div><small>Stockfish 18.0.8 lite · 30k</small></div>
-          <div className="move-list" aria-label="Selected move path">{lineNodes.slice(1).reduce<Array<{ number: number; white?: GameNode; black?: GameNode }>>((rows, node) => { const index = Math.floor((node.ply - 1) / 2); rows[index] ??= { number: index + 1 }; if (node.ply % 2) rows[index].white = node; else rows[index].black = node; return rows; }, []).map((row) => <div key={row.number} className={row.white?.id === activeNode.id || row.black?.id === activeNode.id ? 'current-move' : ''}><span>{String(row.number).padStart(2, '0')}</span>{row.white ? <button onClick={() => void selectNode(row.white!.id)}>{row.white.san}</button> : <i />}{row.black ? <button onClick={() => void selectNode(row.black!.id)}>{row.black.san}</button> : <i />}</div>)}</div>
-          {activeNode.annotations?.comment && <p className="node-comment">{activeNode.annotations.comment}</p>}
-          <section className="engine-lines"><header><span>ENGINE LINES</span><small>{engineLines.length} PV</small></header>{engineLines.slice(0, 6).map((line) => <button key={`${line.multipv}-${line.move}`} onClick={() => void makeMove(line.move)}><strong>{lineSan(activeNode.fen, line.move)}</strong><span>{scoreLabel(line)}</span><small>{line.pv.slice(1, 5).join(' ')}</small></button>)}</section>
-          <section className="continuations"><header><span>LEGAL CONTINUATIONS</span><small>{candidates.length} moves</small></header>{candidates.map((move, index) => { const uci = moveToUci(move); const analyzed = engineLines.find((line) => line.move === uci); return <button key={uci} onClick={() => void makeMove(uci)}><strong>{move.san}</strong><span>{analyzed ? scoreLabel(analyzed) : 'branch'}</span><i style={{ width: `${Math.max(8, 42 - index * 3)}%` }} /></button>; })}</section>
-          <div className="analysis-actions"><Button variant="outline" onClick={exportPgn}><Download /> Export PGN</Button>{study.source.kind === 'seed' && <Button variant="ghost" onClick={() => startGeneration(studyRef.current!, false)}><RotateCcw /> Continue generation</Button>}</div>
-        </aside>
-
-        <section ref={graphPanel} className="permutations-panel" aria-labelledby="permutations-title">
-          <div className="panel-heading"><div><span>3D GAME TREE / TIME AS DEPTH</span><h2 id="permutations-title">Move permutations</h2></div><div className="graph-actions"><Button variant="ghost" size="sm" onClick={() => setGraphMode((value) => value === '3d' ? 'list' : '3d')}><ListTree /> {graphMode === '3d' ? '2D tree' : '3D view'}</Button><Button variant="ghost" size="icon-sm" aria-label="Fullscreen graph" onClick={() => void graphPanel.current?.requestFullscreen()}><Maximize2 /></Button></div></div>
-          <div className="permutations-view">{graphMode === '3d' ? <Suspense fallback={<div className="graph-loading">Mapping local branches…</div>}><PermutationsGraph nodes={treeNodes} activeId={activeNode.id} onSelect={(id) => void selectNode(id)} /></Suspense> : <AccessibleTree study={study} onSelect={(id) => void selectNode(id)} />}</div>
-          <div className="permutations-legend"><span><i className="white-edge" />White edge</span><span><i className="equal" />Balanced</span><span><i className="black-edge" />Black edge</span><strong>{Math.min(treeNodes.length, GRAPH_NODE_LIMIT).toLocaleString()} / {GRAPH_NODE_LIMIT.toLocaleString()} nodes</strong></div>
-        </section>
-      </section>
-      <footer className="status-bar"><button onClick={() => setLicensesOpen(true)}><i /> Browser local · GPLv3</button><span title={address}>GAME ADDRESS · @{address.slice(0, 8)}…{address.slice(-4)}</span><span>{notice}</span><span>4D · XY BRANCH · Z PLY · T PLAYBACK</span></footer>
 
       <Dialog open={importOpen} onOpenChange={setImportOpen}><DialogContent className="import-dialog"><DialogHeader><DialogTitle>Import a local study</DialogTitle><DialogDescription>FEN and one annotated PGN are validated entirely in this browser. Nothing is uploaded.</DialogDescription></DialogHeader><Tabs value={importKind} onValueChange={(value) => { setImportKind(value as 'fen' | 'pgn'); setImportError(''); }}><TabsList><TabsTrigger value="fen">FEN</TabsTrigger><TabsTrigger value="pgn">Annotated PGN</TabsTrigger></TabsList><TabsContent value="fen"><Textarea rows={5} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={START_FEN} aria-label="FEN position" /></TabsContent><TabsContent value="pgn"><Textarea rows={12} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={'[Event "Study"]\n\n1. e4 e5 2. Nf3 (2. Bc4) Nc6 *'} aria-label="Annotated PGN" /></TabsContent></Tabs>{importError && <p className="form-error" role="alert">{importError}</p>}<DialogFooter><Button variant="outline" onClick={() => setImportOpen(false)}>Cancel</Button><Button onClick={submitImport} disabled={!importText.trim()}>Validate and open</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={licensesOpen} onOpenChange={setLicensesOpen}><DialogContent className="license-dialog"><DialogHeader><DialogTitle>Open-source notices</DialogTitle><DialogDescription>chesspermutations is GPLv3 software. Analysis runs locally with the exact vendored builds below.</DialogDescription></DialogHeader><div className="license-list"><p><strong>chesspermutations</strong><br />GPLv3 · <a href="/chesspermutations-source-v1.zip" download>download this build’s source</a> · <a href="/SOURCE.txt" target="_blank">source notice</a></p><p><strong>Stockfish.js 18.0.8 lite single-thread</strong><br />GPLv3 · <a href="https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918" target="_blank" rel="noreferrer">exact corresponding source and build instructions</a> · <a href="/stockfish/COPYING.txt" target="_blank">license</a></p><p><strong>Chessground 10.1.1</strong><br />GPL-3.0-or-later · <a href="https://github.com/lichess-org/chessground/tree/v10.1.1" target="_blank" rel="noreferrer">source</a> · <a href="/CHESSGROUND-LICENSE.txt" target="_blank">license</a></p></div><DialogFooter showCloseButton /></DialogContent></Dialog>
-    </main>
+        <Dialog open={licensesOpen} onOpenChange={setLicensesOpen}><DialogContent className="license-dialog"><DialogHeader><DialogTitle>About chesspermutations</DialogTitle><DialogDescription>Games, positions, and Stockfish analysis stay in this browser. chesspermutations is GPLv3 software using the exact vendored builds below.</DialogDescription></DialogHeader><div className="license-list"><p><strong>chesspermutations</strong><br />GPLv3 · <a href="/chesspermutations-source-v1.zip" download>download this build’s source</a> · <a href="/SOURCE.txt" target="_blank">source notice</a></p><p><strong>Stockfish.js 18.0.8 lite single-thread</strong><br />GPLv3 · 30,000 nodes · Threads 1 · Hash 16 · <a href="https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918" target="_blank" rel="noreferrer">source and build instructions</a> · <a href="/stockfish/COPYING.txt" target="_blank">license</a></p><p><strong>Chessground 10.1.1</strong><br />GPL-3.0-or-later · <a href="https://github.com/lichess-org/chessground/tree/v10.1.1" target="_blank" rel="noreferrer">source</a> · <a href="/CHESSGROUND-LICENSE.txt" target="_blank">license</a></p></div><DialogFooter showCloseButton /></DialogContent></Dialog>
+      </main>
+      <Toaster />
+    </>
   );
 }

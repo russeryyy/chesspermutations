@@ -3,6 +3,7 @@ import { adjudicate } from '@/lib/chess/adjudication';
 import { phraseAddress, nodeIdentity } from '@/lib/chess/identity';
 import { layoutGameTree, visibleGameTree } from '@/lib/chess/layout';
 import { importAnnotatedPgn } from '@/lib/chess/pgn';
+import { ancestorSanTrail, placeNodePreview } from '@/lib/chess/preview';
 import { readShareHash, shareHash } from '@/lib/chess/share';
 import { appendMove, buildStudyFromSan, createStudy, pgnForPath, START_FEN } from '@/lib/chess/study';
 
@@ -76,6 +77,27 @@ describe('rules, paths, and positions', () => {
     const visible = visibleGameTree(nodes, 'node-1299', 1_200);
     expect(visible).toHaveLength(1_200);
     expect(visible.some((node) => node.id === 'node-1299')).toBe(true);
+  });
+
+  it('formats recent SAN context for graph previews', async () => {
+    const study = await buildStudyFromSan(['e4', 'e5', 'Nf3', 'Nc6'], { kind: 'seed', address: 'preview' });
+    expect(ancestorSanTrail(Object.values(study.nodes), study.activeId, 3)).toEqual(['e5', 'Nf3', 'Nc6']);
+  });
+
+  it('keeps graph previews in bounds and away from dock overlays', () => {
+    const edge = placeNodePreview({ x: 496, y: 396 }, { width: 500, height: 400 }, { width: 200, height: 120 });
+    expect(edge.left).toBeGreaterThanOrEqual(12);
+    expect(edge.left).toBeLessThanOrEqual(288);
+    expect(edge.top).toBeGreaterThanOrEqual(12);
+    expect(edge.top).toBeLessThanOrEqual(268);
+
+    const avoiding = placeNodePreview(
+      { x: 250, y: 80 },
+      { width: 500, height: 400 },
+      { width: 200, height: 120 },
+      [{ left: 300, top: 0, width: 200, height: 400 }],
+    );
+    expect(avoiding.left + 200).toBeLessThanOrEqual(300);
   });
 });
 
