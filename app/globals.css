@@ -913,9 +913,6 @@ textarea {
     inset: 58px 10px 10px;
     padding: 8px;
   }
-  .node-preview {
-    display: none;
-  }
   .canvas-error {
     right: 10px;
     bottom: 10px;
@@ -927,6 +924,12 @@ textarea {
     left: 14px !important;
     width: auto !important;
     max-width: none !important;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .node-preview {
+    display: none;
   }
 }
 

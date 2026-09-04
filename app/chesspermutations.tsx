@@ -1178,7 +1178,10 @@ export function ChessPermutations() {
   const timelineMax = Math.max(0, timelineNodes.length - 1);
   const candidates: Move[] =
     study && activeNode ? legalMoves(study, activeNode.id) : [];
-  const treeNodes = study ? Object.values(study.nodes) : [];
+  const treeNodes = useMemo(
+    () => (study ? Object.values(study.nodes) : []),
+    [study],
+  );
   const currentEvaluation =
     activeNode?.evaluation ?? activeNode?.annotations?.importedEvaluation;
   const evalPercent = currentEvaluation

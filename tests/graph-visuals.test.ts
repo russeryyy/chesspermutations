@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { graphNodeAt } from '@/lib/chess/graph-hit';
 import {
   createStudy,
   appendMove,
@@ -180,5 +181,31 @@ describe('constellation layout', () => {
       e4.id,
       study.rootId,
     ]);
+  });
+});
+
+describe('constellation pointer targeting', () => {
+  const targets = [
+    { id: 'root', x: 100, y: 100, radius: 12, depth: 30 },
+    { id: 'branch', x: 140, y: 105, radius: 14, depth: 40 },
+  ];
+
+  it('targets every rendered token across its visible screen-space area', () => {
+    expect(graphNodeAt(targets, 90, 100)).toBe('root');
+    expect(graphNodeAt(targets, 151, 105)).toBe('branch');
+    expect(graphNodeAt(targets, 200, 200)).toBeNull();
+  });
+
+  it('chooses the front token deterministically when tokens overlap', () => {
+    expect(
+      graphNodeAt(
+        [
+          { id: 'rear', x: 100, y: 100, radius: 15, depth: 50 },
+          { id: 'front', x: 100, y: 100, radius: 15, depth: 20 },
+        ],
+        100,
+        100,
+      ),
+    ).toBe('front');
   });
 });

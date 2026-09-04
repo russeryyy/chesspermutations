@@ -17,6 +17,7 @@ import {
   terminalProbability,
   type GraphMoveVisual,
 } from '@/lib/chess/graph-visuals';
+import { graphNodeAt, type GraphHitTarget } from '@/lib/chess/graph-hit';
 import { layoutGameTree, visibleGameTree } from '@/lib/chess/layout';
 import {
   ancestorSanTrail,
@@ -40,8 +41,10 @@ interface HoveredNode {
 }
 interface LabelProjection {
   element: HTMLDivElement;
-  point: THREE.Vector3;
+  nodeId: string;
   priority: number;
+  width: number;
+  height: number;
 }
 
 const PIECE_INDEX: Record<GraphMoveVisual['piece'], number> = {
@@ -59,6 +62,10 @@ const PIECE_ATLAS = new THREE.TextureLoader().load('/graph-piece-atlas.svg');
 PIECE_ATLAS.minFilter = THREE.LinearFilter;
 PIECE_ATLAS.magFilter = THREE.LinearFilter;
 PIECE_ATLAS.colorSpace = THREE.SRGBColorSpace;
+
+function estimatedLabelWidth(text: string): number {
+  return Math.max(84, Math.min(155, text.length * 5.7 + 16));
+}
 
 function moveLabel(node: GameNode): string {
   if (!node.ply) return 'Starting position';
@@ -214,6 +221,7 @@ export function PermutationsGraph({
     onSelect,
   });
   const rebuild = useRef<(() => void) | null>(null);
+  const refreshAnalysis = useRef<(() => void) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<HoveredNode | null>(null);
   useEffect(() => {
@@ -235,7 +243,10 @@ export function PermutationsGraph({
   ]);
   useEffect(() => {
     rebuild.current?.();
-  }, [nodes, activeId, probabilities, analysisUnavailable]);
+  }, [nodes, activeId]);
+  useEffect(() => {
+    refreshAnalysis.current?.();
+  }, [probabilities, analysisUnavailable]);
 
   useEffect(() => {
     const host = mount.current;
@@ -279,6 +290,7 @@ export function PermutationsGraph({
     let mesh: THREE.InstancedMesh | null = null;
     let graphGroup = new THREE.Group();
     scene.add(graphGroup);
+    let visibleNodes: GameNode[] = [];
     let nodeIds: string[] = [];
     let pointById = new Map<string, THREE.Vector3>();
     let previousPoints = new Map<string, THREE.Vector3>();
@@ -296,10 +308,30 @@ export function PermutationsGraph({
       visibleHoverId: string | null = null;
     let pointerDown: { x: number; y: number } | null = null,
       pointerMoved = false;
+    let highlightedNodeId: string | null = null;
+    const highlightNode = (id: string | null) => {
+      if (!mesh || highlightedNodeId === id) return;
+      const attribute = mesh.geometry.getAttribute('aMisc');
+      if (highlightedNodeId) {
+        const previous = nodeIds.indexOf(highlightedNodeId);
+        if (previous >= 0)
+          attribute.setZ(
+            previous,
+            highlightedNodeId === latest.current.activeId ? 1 : 0,
+          );
+      }
+      highlightedNodeId = id;
+      if (id) {
+        const next = nodeIds.indexOf(id);
+        if (next >= 0) attribute.setZ(next, 1);
+      }
+      attribute.needsUpdate = true;
+    };
     const clearHover = (updateState = true) => {
       window.clearTimeout(hoverTimer);
       pendingHoverId = null;
       visibleHoverId = null;
+      highlightNode(null);
       renderer.domElement.style.cursor = pointerDown ? 'grabbing' : 'grab';
       if (updateState) setHovered(null);
     };
@@ -355,6 +387,16 @@ export function PermutationsGraph({
       });
       mesh.instanceMatrix.needsUpdate = true;
     };
+    const labelText = (node: GameNode) => {
+      const probability =
+        latest.current.probabilities[node.id] ?? terminalProbability(node);
+      const probabilityText = probability
+        ? leaderProbabilityLabel(probability)
+        : latest.current.analysisUnavailable
+          ? 'Unavailable'
+          : 'Analyzing';
+      return `${node.san ?? 'Start'} · ${probabilityText}`;
+    };
     const buildLabels = (visible: GameNode[], path: Set<string>) => {
       const layer = labelLayer.current;
       if (!layer) return;
@@ -389,27 +431,48 @@ export function PermutationsGraph({
         )
         .slice(0, mobile ? 18 : 36);
       priority.forEach(({ node, value }) => {
-        const probability =
-          latest.current.probabilities[node.id] ?? terminalProbability(node);
         const element = document.createElement('div');
         element.className = `graph-node-label ${node.ply % 2 ? 'white-move-label' : 'black-move-label'}${node.id === active?.id ? ' active' : ''}`;
-        const probabilityText = probability
-          ? leaderProbabilityLabel(probability)
-          : latest.current.analysisUnavailable
-            ? 'Unavailable'
-            : 'Analyzing';
-        element.textContent = `${node.san ?? 'Start'} · ${probabilityText}`;
+        const text = labelText(node);
+        element.textContent = text;
         element.setAttribute('aria-hidden', 'true');
         layer.appendChild(element);
         labelProjections.push({
           element,
-          point: targetPoints.get(node.id)!,
+          nodeId: node.id,
           priority: value,
+          width: estimatedLabelWidth(text),
+          height: 24,
         });
       });
     };
+    const updateAnalysisVisuals = () => {
+      if (!mesh) return;
+      const attribute = mesh.geometry.getAttribute('aWdl');
+      visibleNodes.forEach((node, index) => {
+        const probability =
+          latest.current.probabilities[node.id] ?? terminalProbability(node);
+        attribute.setXYZ(
+          index,
+          (probability?.white ?? 0) / 1000,
+          (probability?.draw ?? 0) / 1000,
+          (probability?.black ?? 0) / 1000,
+        );
+      });
+      attribute.needsUpdate = true;
+      const byId = new Map(visibleNodes.map((node) => [node.id, node]));
+      labelProjections.forEach((label) => {
+        const node = byId.get(label.nodeId);
+        if (!node) return;
+        const text = labelText(node);
+        label.element.textContent = text;
+        label.width = estimatedLabelWidth(text);
+      });
+    };
+    refreshAnalysis.current = updateAnalysisVisuals;
     const buildGraph = () => {
       clearHover();
+      highlightedNodeId = null;
       previousPoints = new Map(pointById);
       disposeObject(graphGroup);
       scene.remove(graphGroup);
@@ -420,6 +483,7 @@ export function PermutationsGraph({
         latest.current.activeId,
         1200,
       );
+      visibleNodes = visible;
       const byId = new Map(visible.map((node) => [node.id, node]));
       const path = selectedAncestry(visible, latest.current.activeId);
       const points = layoutGameTree(visible, latest.current.activeId);
@@ -584,20 +648,29 @@ export function PermutationsGraph({
     };
     rebuild.current = buildGraph;
     buildGraph();
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
     const hitAt = (clientX: number, clientY: number) => {
       if (!mesh) return null;
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.set(
-        ((clientX - rect.left) / rect.width) * 2 - 1,
-        -((clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObject(mesh)[0];
-      return hit?.instanceId === undefined
-        ? null
-        : (nodeIds[hit.instanceId] ?? null);
+      const focalPixels =
+        rect.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+      const targets: GraphHitTarget[] = [];
+      nodeIds.forEach((id, index) => {
+        const point = pointById.get(id);
+        if (!point) return;
+        const viewPoint = point.clone().applyMatrix4(camera.matrixWorldInverse);
+        const depth = -viewPoint.z;
+        if (depth <= camera.near || depth >= camera.far) return;
+        const projected = point.clone().project(camera);
+        if (projected.z < -1 || projected.z > 1) return;
+        targets.push({
+          id,
+          x: rect.left + (projected.x * 0.5 + 0.5) * rect.width,
+          y: rect.top + (-projected.y * 0.5 + 0.5) * rect.height,
+          radius: Math.max(11, (nodeSizes[index] * focalPixels * 1.12) / depth),
+          depth,
+        });
+      });
+      return graphNodeAt(targets, clientX, clientY);
     };
     const previewPosition = (clientX: number, clientY: number) => {
       const hostRect = host.getBoundingClientRect();
@@ -637,6 +710,7 @@ export function PermutationsGraph({
         clearHover();
         return;
       }
+      highlightNode(id);
       if (id === visibleHoverId) {
         positionVisiblePreview(clientX, clientY);
         return;
@@ -721,16 +795,22 @@ export function PermutationsGraph({
       labelProjections
         .sort((left, right) => left.priority - right.priority)
         .forEach((label) => {
-          const projected = label.point.clone().project(camera);
-          const left = (projected.x * 0.5 + 0.5) * width + 13,
-            top = (-projected.y * 0.5 + 0.5) * height - 12;
+          const point = pointById.get(label.nodeId);
+          if (!point) {
+            label.element.style.display = 'none';
+            return;
+          }
+          const projected = point.clone().project(camera);
+          const left = Math.round((projected.x * 0.5 + 0.5) * width + 13),
+            top = Math.round((-projected.y * 0.5 + 0.5) * height - 12);
           const rect = {
             left,
             top,
-            right: left + Math.max(84, label.element.offsetWidth),
-            bottom: top + 24,
+            right: left + label.width,
+            bottom: top + label.height,
           };
           const visible =
+            projected.z >= -1 &&
             projected.z < 1 &&
             left > 0 &&
             left < width - 70 &&
@@ -796,6 +876,7 @@ export function PermutationsGraph({
       renderer.domElement.remove();
       labels?.replaceChildren();
       rebuild.current = null;
+      refreshAnalysis.current = null;
       clearHover(false);
     };
   }, []);
