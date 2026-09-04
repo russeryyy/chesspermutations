@@ -1,0 +1,14 @@
+Chess Universe source code
+==========================
+
+Chess Universe is GPLv3 software. Download the exact corresponding source snapshot for this deployed build at:
+
+  /chess-universe-source-v1.zip
+
+Engine sources and build instructions:
+
+  Stockfish.js 18.0.8: https://github.com/nmrugg/stockfish.js/tree/93c994592dcf3b4b21052ab925e9b534df9c0918
+  Stockfish engine: https://github.com/official-stockfish/Stockfish
+  Chessground 10.1.1: https://github.com/lichess-org/chessground/tree/v10.1.1
+
+The distributed engine license is available at /stockfish/COPYING.txt.
