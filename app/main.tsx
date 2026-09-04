@@ -1,7 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { initializeAnalytics } from './analytics';
 import { ChessPermutations } from './chesspermutations';
 import './globals.css';
+
+initializeAnalytics();
 
 const root = document.getElementById('root');
 

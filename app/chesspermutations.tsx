@@ -1668,8 +1668,9 @@ export function ChessPermutations() {
               <DialogTitle>About chesspermutations</DialogTitle>
               <DialogDescription>
                 Games, positions, and Stockfish analysis stay in this browser.
-                chesspermutations is GPLv3 software using the exact vendored
-                builds below.
+                Basic cookieless page analytics never include chess content or
+                share addresses. chesspermutations is GPLv3 software using the
+                exact vendored builds below.
               </DialogDescription>
             </DialogHeader>
             <div className="license-list">

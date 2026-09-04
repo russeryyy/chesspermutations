@@ -29,6 +29,7 @@ yarn-error.log*
 
 # local environment
 .env*
+!.env.example
 
 # generated files
 next-env.d.ts

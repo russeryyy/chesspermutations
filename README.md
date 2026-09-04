@@ -25,6 +25,16 @@ Progressive graph probabilities use a separate `graph-analysis:v1` contract. Ope
 
 Seed phrases are normalized and SHA-256 hashed in the browser with a `chess-game:v1` domain separator. Links contain only the resulting address—not the original phrase. Imported FENs and PGNs, generated studies, positions, and engine analysis remain local to the browser.
 
+Google Analytics 4 is disabled unless a valid `VITE_GA_MEASUREMENT_ID` is
+present in the production build. It runs with analytics and advertising storage
+denied, sends one basic cookieless page view, and uses a sanitized page URL
+without query parameters or fragments. Seed phrases, FENs, PGNs, move paths,
+positions, and engine data are not tracked.
+
+For a local production build, copy `.env.example` to `.env.production` and set
+the GA4 measurement ID before running `npm run build`. For a hosted static
+build, configure the same variable as a build-time environment variable.
+
 ## Licensing
 
 chesspermutations is released under GPLv3. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). A corresponding source snapshot is included in production builds.
